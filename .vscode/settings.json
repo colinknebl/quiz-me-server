@@ -1,0 +1,12 @@
+{
+	"configurations": [
+		{
+			"type": "node",
+			"runtimeVersion": "13.10.1",
+			"request": "launch",
+			"name": "Launch",
+			"program": "${workspaceFolder}"
+		}
+	],
+	"prettier.configPath": "./config/prettier.config.js"
+}

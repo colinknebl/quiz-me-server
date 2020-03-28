@@ -1,0 +1,13 @@
+{
+    "name": "quiz-me-server",
+    "version": "0.0.0",
+    "description": "a flashcard based quiz application",
+    "main": "index.js",
+    "scripts": {
+        "dev:mongodb:start": "docker start flashcards_dev_mongo",
+        "dev:mongodb:stop": "docker stop flashcards_dev_mongo"
+    },
+    "author": "Colin Knebl",
+    "license": "ISC",
+    "dependencies": {}
+}
