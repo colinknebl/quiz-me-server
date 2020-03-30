@@ -2,12 +2,37 @@
     "name": "quiz-me-server",
     "version": "0.0.0",
     "description": "a flashcard based quiz application",
-    "main": "index.js",
+    "main": "dist/main.js",
     "scripts": {
-        "dev:mongodb:start": "docker start flashcards_dev_mongo",
-        "dev:mongodb:stop": "docker stop flashcards_dev_mongo"
+        "clean": "rm -rf dist",
+        "mongo:start": "docker run --rm --name m1 -p 27017:27017 -v $(pwd)/.data/db:/data/db mongo",
+        "mongo:stop": "docker stop m1",
+        "start": "npm-run-all mongo:start --parallel tsc:watch serve",
+        "tsc": "tsc",
+        "tsc:watch": "tsc --watch",
+        "serve": "nodemon dist/main.js",
+        "test": "echo No Tests!"
     },
     "author": "Colin Knebl",
     "license": "ISC",
-    "dependencies": {}
+    "dependencies": {
+        "auth": "file:../auth",
+        "body-parser": "^1.19.0",
+        "cookie-parser": "^1.4.5",
+        "cors": "^2.8.5",
+        "dotenv": "^8.2.0",
+        "express": "^4.17.1",
+        "jsonwebtoken": "^8.5.1",
+        "mongodb": "^3.5.5"
+    },
+    "devDependencies": {
+        "@types/body-parser": "^1.19.0",
+        "@types/cookie-parser": "^1.4.2",
+        "@types/cors": "^2.8.6",
+        "@types/dotenv": "^8.2.0",
+        "@types/express": "^4.17.3",
+        "@types/jsonwebtoken": "^8.3.8",
+        "@types/mongodb": "^3.5.4",
+        "typescript": "^3.8.3"
+    }
 }
