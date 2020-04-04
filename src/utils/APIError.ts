@@ -1,8 +1,10 @@
-import { AuthenticationError } from 'auth';
+import { AuthenticationError } from '../auth/AuthenticationError';
 
 export class APIError extends Error {
     public static messages = {
         error_creating_deck: 'Error creating deck',
+        error_creating_card: 'Error creating card',
+        error_updating_card: 'Error updating card',
         invalid_input: 'Invalid input',
         invalid_token: 'Invalid token, please login',
         invalid_user_id: "Invalid user ID",

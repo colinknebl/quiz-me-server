@@ -1,5 +1,4 @@
 import { Response } from "express";
-import { AuthenticationError } from 'auth';
 
 import { APIError } from '../utils/APIError';
 

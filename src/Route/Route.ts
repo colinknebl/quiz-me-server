@@ -1,5 +1,5 @@
 import { Response, Request } from "express";
-import { AuthProvider, AuthenticationError } from "auth";
+import { AuthProvider } from "../auth/AuthProvider";
 
 import { APIError } from '../utils/APIError';
 import { _Response } from './_Response';
@@ -53,6 +53,7 @@ export class Route {
     }
 
     public set error(error: unknown) {
+        console.log('setting error', error);
         this.#res.setError(error);
     }
 
