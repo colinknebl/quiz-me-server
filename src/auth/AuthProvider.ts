@@ -21,8 +21,6 @@ type WithID<U> = U & { id: string };
 interface IAuthProvider<U> {
     createUser(email: string, password: string, options?: U): Promise<string>;
     login(options: IEmailLogin): Promise<U>;
-    // logout(req, res): Promise<boolean>;
-    // getCurrentUser(req, res): Promise<U | null>;
 }
 
 
