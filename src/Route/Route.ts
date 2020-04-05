@@ -1,59 +1,53 @@
-import { Response, Request } from "express";
-import { AuthProvider } from "../auth/AuthProvider";
+import { Response, Request, NextFunction } from 'express';
+import { AuthProvider } from '../auth/AuthProvider';
 
 import { APIError } from '../utils/APIError';
 import { _Response } from './_Response';
-import { _Request } from './_Request'
+import { _Request } from './_Request';
 import { Token } from '../utils/jwt';
 import type { IUser } from '../models/User';
 
-export class Route {
+export class RouteHandler {
     #res: _Response;
     #req: _Request;
 
-    private static _protectedCookieToVerify: string;
-    static set cookieKeyToVerify(key: string) {
-        Route._protectedCookieToVerify = key;
-    }
+    public static authKey: string = '';
+    public static authProvider: AuthProvider<IUser>;
 
-    constructor(req: Request, res: Response) {
+    constructor(req: Request, res: Response, next: NextFunction) {
         this.#req = new _Request(req);
         this.#res = new _Response(res, {});
     }
 
-    public async protect(authProvider: AuthProvider<IUser>): Promise<{ user: IUser | null }> {
-        let user: IUser | null = null
-        const cookieKey = Route._protectedCookieToVerify;
-        const signedCookies = this.#req.raw.signedCookies;
-
+    public static async protect(req: Request, res: Response, next: NextFunction): Promise<void> {
+        let user: IUser | null = null;
+        const invalidTokenError = new APIError(APIError.messages.invalid_token, APIError.codes.forbidden);
         try {
-            if (!cookieKey || !signedCookies) {
-                throw new APIError(APIError.messages.unable_to_verify_user);
+            if (!req.headers.authorization) {
+                throw invalidTokenError;
+            }
+            const authHeader = req.headers.authorization?.split(' ');
+            const token = (authHeader as string[])[1];
+            if (!token) {
+                throw invalidTokenError;
             }
 
-            if (signedCookies[cookieKey]) {
-                const verified = Token.verify(signedCookies[cookieKey]) as object
-                const userId = (verified as any)?.data[cookieKey];
-                user = await authProvider.getUserById(userId as string);
-                if (!user) {
-                    throw new APIError(APIError.messages.invalid_user_id);
-                }
-            } else {
-                this.#res.setError(new APIError(APIError.messages.user_not_logged_in, APIError.codes.invalid));
+            const verified = Token.verify(token) as object;
+            const userId = (verified as any)?.data[RouteHandler.authKey];
+            user = await RouteHandler.authProvider.getUserById(userId as string);
+            if (!user) {
+                throw new APIError(APIError.messages.invalid_user_id);
             }
+            req.user = user;
+            next();
         } catch (error) {
             let apiError = APIError.from(error, APIError.messages.unable_to_verify_user);
-            this.#res.setError(apiError);
-            throw apiError;
-        }
-
-        return {
-            user
+            req.routeHandler.error = apiError;
+            req.routeHandler.response.send();
         }
     }
 
     public set error(error: unknown) {
-        console.log('setting error', error);
         this.#res.setError(error);
     }
 

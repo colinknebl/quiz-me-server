@@ -7,13 +7,13 @@ const secret = process.env.SECRET ?? '';
 type Options = Partial<jwt.SignOptions>;
 
 enum TokenMessages {
-    expired = 'jwt expired'
+    expired = 'jwt expired',
 }
 
 export class Token {
     static options: Options = {
-        expiresIn: '7d'
-    }
+        expiresIn: '7d',
+    };
 
     public static verify(this: typeof Token, token: string) {
         try {
@@ -22,7 +22,7 @@ export class Token {
             if (error.message === TokenMessages.expired) {
                 throw new APIError(APIError.messages.user_not_logged_in, APIError.codes.invalid);
             } else {
-                throw new APIError();
+                throw new APIError(APIError.messages.invalid_token, APIError.codes.forbidden);
             }
         }
     }

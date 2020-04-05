@@ -7,17 +7,18 @@ export class APIError extends Error {
         error_updating_card: 'Error updating card',
         invalid_input: 'Invalid input',
         invalid_token: 'Invalid token, please login',
-        invalid_user_id: "Invalid user ID",
+        invalid_user_id: 'Invalid user ID',
         unable_to_verify_user: 'Unable to verify user status',
         unknown_error: 'Unknown error occurred',
         user_not_logged_in: 'User not logged in',
-    }
+    };
 
     public static codes = {
         invalid: 400,
+        forbidden: 403,
         not_found: 404,
         server_error: 500,
-    }
+    };
 
     static from(error: unknown, message?: string, code?: number): APIError {
         let apiError: APIError;

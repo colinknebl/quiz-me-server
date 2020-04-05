@@ -1,6 +1,7 @@
 import { MongoClient, Db, ObjectID } from 'mongodb';
 import crypto from 'crypto';
 
+import { Token } from '../utils/jwt';
 import { AuthenticationError } from './AuthenticationError';
 
 interface IEmailLogin {
@@ -14,13 +15,16 @@ interface IDBUser {
     email: string;
     salt: string;
     createdDate: string;
+    token: string | null;
 }
 
 type WithID<U> = U & { id: string };
 
+type LoginResponse<U> = { user: U; token: string };
 interface IAuthProvider<U> {
     createUser(email: string, password: string, options?: U): Promise<string>;
-    login(options: IEmailLogin): Promise<U>;
+    login(options: IEmailLogin): Promise<LoginResponse<U>>;
+    logout(id: string): Promise<void>;
 }
 
 export class AuthProvider<User> implements IAuthProvider<User> {
@@ -52,6 +56,7 @@ export class AuthProvider<User> implements IAuthProvider<User> {
         delete user.hashedPassword;
         delete user.salt;
         delete user._id;
+        delete user.token;
         return user as any;
     }
 
@@ -113,11 +118,13 @@ export class AuthProvider<User> implements IAuthProvider<User> {
             email,
             hashedPassword: passwordHash,
             salt,
+            token: null,
             createdDate: new Date().toUTCString(),
         };
         if (options) {
             delete options.email;
             delete options.password;
+            delete options.token;
             user = {
                 ...user,
                 ...options,
@@ -129,7 +136,24 @@ export class AuthProvider<User> implements IAuthProvider<User> {
         return result.insertedId as any;
     }
 
-    public async login(options: IEmailLogin): Promise<WithID<User>> {
+    public async logout(userId: string): Promise<void> {
+        if (!userId) {
+            throw new AuthenticationError(
+                AuthenticationError.messages.user_id_not_provided,
+                AuthenticationError.codes.forbidden
+            );
+        }
+        const { db, closeConnectionCb } = await this._connect();
+        try {
+            const collection = db.collection<IDBUser>(this.#collectionName);
+            await collection.findOneAndUpdate({ _id: new ObjectID(userId) }, { $set: { token: null } });
+        } catch (error) {
+        } finally {
+            closeConnectionCb();
+        }
+    }
+
+    public async login(options: IEmailLogin): Promise<{ user: WithID<User>; token: string }> {
         if (!options?.email || !options?.password) {
             throw new AuthenticationError(AuthenticationError.messages.email_or_password_not_provided);
         }
@@ -137,8 +161,8 @@ export class AuthProvider<User> implements IAuthProvider<User> {
         const { db, closeConnectionCb } = await this._connect();
 
         const collection = db.collection<IDBUser>(this.#collectionName);
-        const user = await collection.findOne({ email: options.email });
-        closeConnectionCb();
+        const query = { email: options.email };
+        const user = await collection.findOne(query);
 
         if (!user) {
             throw new AuthenticationError(
@@ -151,7 +175,14 @@ export class AuthProvider<User> implements IAuthProvider<User> {
             throw new AuthenticationError(AuthenticationError.messages.email_or_password_incorrect);
         }
 
-        return this._sanitizeUser(user);
+        const token = Token.encrypt({ userId: String(user._id) });
+        await collection.findOneAndUpdate(query, { $set: { token } });
+
+        closeConnectionCb();
+        return {
+            user: this._sanitizeUser(user),
+            token,
+        };
     }
 
     public async getUserById(userId: string): Promise<User> {
