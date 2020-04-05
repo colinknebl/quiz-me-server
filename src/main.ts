@@ -16,7 +16,6 @@ import type { IUser } from './models/User';
 import { Deck } from './models/Deck';
 import { Card } from './models/Card';
 
-
 const mongoURI: string = process.env.MONGO_URI ?? 'mongodb://localhost:27017/quiz_me';
 const authProvider = new AuthProvider<IUser>(mongoURI);
 
@@ -43,14 +42,14 @@ app.use(cors());
 
 app.post('/api/create-user', async (req: Request, res: Response) => {
     const route = new Route(req, res);
-    const userId = await authProvider.createUser(req.body.email, req.body.password, req.body).catch(error => {
+    const userId = await authProvider.createUser(req.body.email, req.body.password, req.body).catch((error) => {
         route.error = APIError.from(error);
     });
 
     if (userId) {
         route.response.data = {
-            userId: userId
-        }
+            userId: userId,
+        };
     }
 
     route.response.send();
@@ -58,7 +57,7 @@ app.post('/api/create-user', async (req: Request, res: Response) => {
 
 app.post('/api/login', async (req: Request, res: Response) => {
     const route = new Route(req, res);
-    const user = await authProvider.login({ email: req.body.email, password: req.body.password }).catch(error => {
+    const user = await authProvider.login({ email: req.body.email, password: req.body.password }).catch((error) => {
         route.error = error;
     });
 
@@ -84,9 +83,8 @@ app.get('/api/protected-route', async (req, res) => {
         const { user } = await route.protect(authProvider);
 
         if (user) {
-            route.response.data = { user }
+            route.response.data = { user };
         }
-
     } catch (error) {
         route.error = error;
     }
@@ -110,12 +108,11 @@ app.post('/api/user/:userId/decks', async (req, res) => {
             const deckId = await deck.save();
 
             if (!deckId) {
-                throw new APIError(APIError.messages.error_creating_deck);;
+                throw new APIError(APIError.messages.error_creating_deck);
             }
 
-            route.response.data = { deckId }
+            route.response.data = { deckId };
         }
-
     } catch (error) {
         route.error = error;
     }
@@ -145,9 +142,8 @@ app.post('/api/user/:userId/decks/:deckId/cards', async (req, res) => {
                 throw new APIError(APIError.messages.error_creating_card);
             }
 
-            route.response.data = { cardId }
+            route.response.data = { cardId };
         }
-
     } catch (error) {
         route.error = error;
     }
@@ -171,8 +167,7 @@ app.get('/api/user/:userId/decks/:deckId/cards/:cardId/toggleMarked', async (req
 
         const marked = await Card.mark(user.id, deckId, cardId);
 
-        route.response.data = { marked }
-
+        route.response.data = { marked };
     } catch (error) {
         route.error = error;
     }
