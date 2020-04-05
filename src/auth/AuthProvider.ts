@@ -1,7 +1,7 @@
 import { MongoClient, Db, ObjectID } from 'mongodb';
 import crypto from 'crypto';
 
-import { AuthenticationError } from './AuthenticationError'
+import { AuthenticationError } from './AuthenticationError';
 
 interface IEmailLogin {
     email: string;
@@ -23,7 +23,6 @@ interface IAuthProvider<U> {
     login(options: IEmailLogin): Promise<U>;
 }
 
-
 export class AuthProvider<User> implements IAuthProvider<User> {
     #mongoDbURI: string;
     #collectionName: 'users' = 'users';
@@ -32,7 +31,7 @@ export class AuthProvider<User> implements IAuthProvider<User> {
         this.#mongoDbURI = mongoDbURI;
     }
 
-    private async _connect(): Promise<{ db: Db, closeConnectionCb: () => {} }> {
+    private async _connect(): Promise<{ db: Db; closeConnectionCb: () => {} }> {
         return new Promise((resolve, reject) => {
             const client = new MongoClient(this.#mongoDbURI, { useUnifiedTopology: true });
             client.connect((err, client) => {
@@ -41,11 +40,11 @@ export class AuthProvider<User> implements IAuthProvider<User> {
                 } else {
                     resolve({
                         db: client.db('users'),
-                        closeConnectionCb: () => client.close()
+                        closeConnectionCb: () => client.close(),
                     });
                 }
             });
-        })
+        });
     }
 
     private _sanitizeUser(user: IDBUser): WithID<User> {
@@ -58,7 +57,8 @@ export class AuthProvider<User> implements IAuthProvider<User> {
 
     private _generateSalt(): string {
         const length = 16;
-        return crypto.randomBytes(Math.ceil(length / 2))
+        return crypto
+            .randomBytes(Math.ceil(length / 2))
             .toString('hex')
             .slice(0, length);
     }
@@ -69,14 +69,14 @@ export class AuthProvider<User> implements IAuthProvider<User> {
         return hash.digest('hex');
     }
 
-    private _hashPassword(password: string, salt?: string): { salt: string, passwordHash: string } {
+    private _hashPassword(password: string, salt?: string): { salt: string; passwordHash: string } {
         const passwordSalt = this._generateSalt();
         const passwordHash = this._generateHash(password, passwordSalt);
 
         return {
             salt: passwordSalt,
-            passwordHash
-        }
+            passwordHash,
+        };
     }
 
     private _verifyPassword(password: string, user: IDBUser): boolean {
@@ -113,15 +113,15 @@ export class AuthProvider<User> implements IAuthProvider<User> {
             email,
             hashedPassword: passwordHash,
             salt,
-            createdDate: new Date().toUTCString()
-        }
+            createdDate: new Date().toUTCString(),
+        };
         if (options) {
             delete options.email;
             delete options.password;
             user = {
                 ...user,
-                ...options
-            }
+                ...options,
+            };
         }
         const result = await collection.insertOne(user);
 
@@ -140,9 +140,7 @@ export class AuthProvider<User> implements IAuthProvider<User> {
         const user = await collection.findOne({ email: options.email });
         closeConnectionCb();
 
-
         if (!user) {
-            console.log('no user x', AuthenticationError);
             throw new AuthenticationError(
                 AuthenticationError.messages.user_not_found,
                 AuthenticationError.codes.not_found
@@ -164,7 +162,6 @@ export class AuthProvider<User> implements IAuthProvider<User> {
         closeConnectionCb();
 
         if (!user) {
-            console.log('no user', AuthenticationError)
             throw new AuthenticationError(
                 AuthenticationError.messages.user_not_found,
                 AuthenticationError.codes.not_found
