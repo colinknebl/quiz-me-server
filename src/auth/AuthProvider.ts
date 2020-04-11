@@ -1,7 +1,7 @@
 import { MongoClient, Db, ObjectID } from 'mongodb';
 import crypto from 'crypto';
 
-import { Token } from '../utils/jwt';
+import { Token, TokenTypes } from '../utils/jwt';
 import { AuthenticationError } from './AuthenticationError';
 
 interface IEmailLogin {
@@ -20,11 +20,14 @@ interface IDBUser {
 
 type WithID<U> = U & { id: string };
 
-type LoginResponse<U> = { user: U; token: string };
+type LoginResponse<U> = {
+    user: WithID<U>;
+    accessToken: string;
+    refreshToken: string;
+};
 interface IAuthProvider<U> {
     createUser(email: string, password: string, options?: U): Promise<string>;
     login(options: IEmailLogin): Promise<LoginResponse<U>>;
-    logout(id: string): Promise<void>;
 }
 
 export class AuthProvider<User> implements IAuthProvider<User> {
@@ -136,24 +139,7 @@ export class AuthProvider<User> implements IAuthProvider<User> {
         return result.insertedId as any;
     }
 
-    public async logout(userId: string): Promise<void> {
-        if (!userId) {
-            throw new AuthenticationError(
-                AuthenticationError.messages.user_id_not_provided,
-                AuthenticationError.codes.forbidden
-            );
-        }
-        const { db, closeConnectionCb } = await this._connect();
-        try {
-            const collection = db.collection<IDBUser>(this.#collectionName);
-            await collection.findOneAndUpdate({ _id: new ObjectID(userId) }, { $set: { token: null } });
-        } catch (error) {
-        } finally {
-            closeConnectionCb();
-        }
-    }
-
-    public async login(options: IEmailLogin): Promise<{ user: WithID<User>; token: string }> {
+    public async login(options: IEmailLogin): Promise<LoginResponse<User>> {
         if (!options?.email || !options?.password) {
             throw new AuthenticationError(AuthenticationError.messages.email_or_password_not_provided);
         }
@@ -175,13 +161,14 @@ export class AuthProvider<User> implements IAuthProvider<User> {
             throw new AuthenticationError(AuthenticationError.messages.email_or_password_incorrect);
         }
 
-        const token = Token.encrypt({ userId: String(user._id) });
-        await collection.findOneAndUpdate(query, { $set: { token } });
+        const accessToken = Token.encrypt({ userId: user._id }, TokenTypes.access);
+        const refreshToken = Token.encrypt({ userId: user._id }, TokenTypes.refresh);
 
         closeConnectionCb();
         return {
             user: this._sanitizeUser(user),
-            token,
+            accessToken,
+            refreshToken,
         };
     }
 

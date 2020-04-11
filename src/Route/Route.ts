@@ -4,7 +4,7 @@ import { AuthProvider } from '../auth/AuthProvider';
 import { APIError } from '../utils/APIError';
 import { _Response } from './_Response';
 import { _Request } from './_Request';
-import { Token } from '../utils/jwt';
+import { Token, TokenTypes } from '../utils/jwt';
 import type { IUser } from '../models/User';
 
 export class RouteHandler {
@@ -32,7 +32,7 @@ export class RouteHandler {
                 throw invalidTokenError;
             }
 
-            const verified = Token.verify(token) as object;
+            const verified = Token.verify(token, TokenTypes.access) as object;
             const userId = (verified as any)?.data[RouteHandler.authKey];
             user = await RouteHandler.authProvider.getUserById(userId as string);
             if (!user) {
@@ -55,7 +55,7 @@ export class RouteHandler {
         return this.#res;
     }
 
-    public invalidateCookie(key: string) {
-        return this.#res.invalidateCookie(key);
+    public invalidateCookie(key: string, value?: string) {
+        return this.#res.invalidateCookie(key, value);
     }
 }

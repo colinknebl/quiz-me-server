@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 
 import { AuthProvider } from './auth/AuthProvider';
-import { Token } from './utils/jwt';
+import { Token, TokenTypes } from './utils/jwt';
 import { APIError } from './utils/APIError';
 import { RouteHandler } from './Route/Route';
 RouteHandler.authKey = 'userId';
@@ -15,6 +15,7 @@ RouteHandler.authKey = 'userId';
 import type { IUser } from './models/User';
 import { Deck } from './models/Deck';
 import { Card } from './models/Card';
+import { AuthenticationError } from './auth/AuthenticationError';
 
 const mongoURI: string = process.env.MONGO_URI ?? 'mongodb://localhost:27017/quiz_me';
 const authProvider = new AuthProvider<IUser>(mongoURI);
@@ -24,22 +25,26 @@ Deck.mongoURI = mongoURI;
 Card.mongoURI = mongoURI;
 
 const app = express();
-
-const cookieParserSecret: string = process.env.SECRET || 'my-secret';
-
-app.use(cookieParser(cookieParserSecret));
+app.use(
+    cors({
+        origin: process.env.CLIENT_URI,
+        credentials: true,
+    })
+);
+app.use(cookieParser());
+app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
-app.use(cors());
 
 app.use((req, res, next) => {
     req.routeHandler = new RouteHandler(req, res, next);
-    req.routeHandler.invalidateCookie('userId');
-    //     res.header('Access-Control-Allow-Origin', '*');
-    //     res.header('Access-Control-Allow-Methods', 'DELETE, POST, PUT');
-    //     res.header(
-    //         'Access-Control-Allow-Headers',
-    //         'Origin, X-Requested-With, Content-Type, Accept'
-    //     );
+    res.header('Access-Control-Allow-Credentials', 'true');
+
+    /* // ! unused headers
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'DELETE, POST, PUT');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Headers', 'X-Requested-With, X-HTTP-Method-Override, Content-Type, Accept');
+    */
     next();
 });
 
@@ -58,59 +63,82 @@ app.post('/api/create-user', async (req: Request, res: Response) => {
 });
 
 app.post('/api/login', async (req: Request, res: Response) => {
-    const { user, token } = await authProvider
-        .login({ email: req.body.email, password: req.body.password })
-        .catch((error) => {
+    try {
+        const data = await authProvider.login({ email: req.body.email, password: req.body.password }).catch((error) => {
             req.routeHandler.error = error;
         });
 
-    if (user) {
-        req.routeHandler.response.data = {
-            user,
-            token,
-        };
+        if (!data) {
+            throw new APIError(AuthenticationError.messages.user_not_found, AuthenticationError.codes.not_found);
+        }
+
+        const { user, accessToken, refreshToken } = data;
+
+        if (user) {
+            res.cookie('jid', refreshToken, { httpOnly: true, path: '/api/refresh-token' });
+            req.routeHandler.response.data = {
+                user,
+                accessToken,
+            };
+        }
+    } catch (error) {
+        req.routeHandler.error = error;
     }
 
     req.routeHandler.response.send();
 });
 
-app.get('/api/logout', RouteHandler.protect, (req, res) => {
-    console.log('req', req.user);
-    if (req.user?.id) {
-        authProvider.logout(req.user.id).catch((error) => (req.routeHandler.error = error));
-    } else {
-        req.routeHandler.error = new APIError(APIError.messages.invalid_token, APIError.codes.forbidden);
+app.get('/api/logout', (req, res) => {
+    req.routeHandler.invalidateCookie('jid', 'undefined');
+    req.routeHandler.response.send();
+});
+
+app.get('/api/refresh-token', async (req, res) => {
+    try {
+        const verify = Token.verify(req.cookies['jid'], TokenTypes.refresh);
+        const user = await authProvider.getUserById(verify.data.userId);
+        if (!user) {
+            throw new AuthenticationError(
+                AuthenticationError.messages.user_not_found,
+                AuthenticationError.codes.not_found
+            );
+        }
+        const data: any = {
+            accessToken: Token.encrypt({ userId: user.id }, TokenTypes.access),
+        };
+        if (req.query?.withUser) {
+            data.user = user;
+        }
+        req.routeHandler.response.data = data;
+    } catch (error) {
+        req.routeHandler.error = error;
     }
     req.routeHandler.response.send();
 });
 
 app.get('/api/protected-route', RouteHandler.protect, async (req, res) => {
-    console.log('enter protected-route');
-    console.log(req.user);
     req.routeHandler.response.send();
 });
 
-app.post('/api/user/:userId/decks', RouteHandler.protect, async (req, res) => {
-    try {
-        const { user, routeHandler } = req;
+app.get('/api/user', RouteHandler.protect, async (req, res) => {
+    req.routeHandler.response.data = { user: req.user };
+    req.routeHandler.response.send();
+});
 
+app.post('/api/create-deck', RouteHandler.protect, async (req, res) => {
+    try {
         if (!req.body.title) {
             throw new APIError(`${APIError.messages.invalid_input}: deck title not privded`);
         }
-        if (user) {
-            if (String(req.params.userId) !== String(user.id)) {
-                throw new APIError(APIError.messages.unable_to_verify_user);
-            }
 
-            const deck = new Deck(user.id, req.body.title);
-            const deckId = await deck.save();
+        const deck = new Deck(req.user.id, req.body.title);
+        const deckId = await deck.save();
 
-            if (!deckId) {
-                throw new APIError(APIError.messages.error_creating_deck);
-            }
-
-            req.routeHandler.response.data = { deckId };
+        if (!deckId) {
+            throw new APIError(APIError.messages.error_creating_deck);
         }
+
+        req.routeHandler.response.data = { deckId };
     } catch (error) {
         req.routeHandler.error = error;
     }
@@ -118,41 +146,31 @@ app.post('/api/user/:userId/decks', RouteHandler.protect, async (req, res) => {
     req.routeHandler.response.send();
 });
 
-app.post('/api/user/:userId/decks/:deckId/cards', RouteHandler.protect, async (req, res) => {
+app.post('/api/decks/:deckId/cards', RouteHandler.protect, async (req, res) => {
     try {
-        if (!req.body.sideA || !req.body.sideB) {
+        const { sideA, sideB } = req.body;
+        if (!sideA || !sideB) {
             throw new APIError(APIError.messages.invalid_input);
         }
-        const { user, routeHandler } = req;
-        if (user) {
-            if (String(req.params.userId) !== String(user.id)) {
-                throw new APIError(APIError.messages.unable_to_verify_user);
-            }
-            const { sideA, sideB } = req.body;
-            const card = new Card(user.id, req.params.deckId, sideA, sideB);
-            const cardId = await card.save();
-            if (!cardId) {
-                throw new APIError(APIError.messages.error_creating_card);
-            }
-            req.routeHandler.response.data = { cardId };
+        const card = new Card(req.user.id, req.params.deckId, sideA, sideB);
+        const cardId = await card.save();
+        if (!cardId) {
+            throw new APIError(APIError.messages.error_creating_card);
         }
+        req.routeHandler.response.data = { cardId };
     } catch (error) {
         req.routeHandler.error = error;
     }
     req.routeHandler.response.send();
 });
 
-app.get('/api/user/:userId/decks/:deckId/cards/:cardId/toggleMarked', RouteHandler.protect, async (req, res) => {
-    console.log('toggle maked...');
+app.get('/api/deck/:deckId/card/:cardId/toggleMarked', RouteHandler.protect, async (req, res) => {
     try {
-        const { userId, deckId, cardId } = req.params;
+        const { deckId, cardId } = req.params;
         if (!deckId || !cardId) {
             throw new APIError(APIError.messages.invalid_input);
         }
         const { user } = req;
-        if (!user || String(userId) !== String(user.id)) {
-            throw new APIError(APIError.messages.unable_to_verify_user);
-        }
         const marked = await Card.mark(user.id, deckId, cardId);
         req.routeHandler.response.data = { marked };
     } catch (error) {
