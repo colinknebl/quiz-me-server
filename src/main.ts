@@ -17,7 +17,7 @@ import { Card } from './models/Card';
 import { AuthenticationError } from './auth/AuthenticationError';
 import { Cookie } from './models/Cookie';
 
-const mongoURI: string = process.env.MONGO_URI ?? 'mongodb://localhost:27017/quiz_me';
+const mongoURI: string = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/quiz_me';
 const authProvider = new AuthProvider<IUser>(mongoURI);
 
 RouteHandler.authProvider = authProvider;
