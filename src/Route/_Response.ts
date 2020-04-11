@@ -25,10 +25,6 @@ export class _Response {
         this.#error = APIError.from(error);
     }
 
-    public invalidateCookie(key: string, value?: string) {
-        this.#res.cookie(key, value ?? '', { expires: new Date(0) });
-    }
-
     public get error(): Error | undefined {
         return this.#error;
     }

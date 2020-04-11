@@ -54,8 +54,4 @@ export class RouteHandler {
     public get response(): _Response {
         return this.#res;
     }
-
-    public invalidateCookie(key: string, value?: string) {
-        return this.#res.invalidateCookie(key, value);
-    }
 }

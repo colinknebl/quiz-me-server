@@ -1,9 +1,8 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: `${__dirname}/../config/.env` });
 
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
-import cookieParser from 'cookie-parser';
 import cors from 'cors';
 
 import { AuthProvider } from './auth/AuthProvider';
@@ -16,6 +15,7 @@ import type { IUser } from './models/User';
 import { Deck } from './models/Deck';
 import { Card } from './models/Card';
 import { AuthenticationError } from './auth/AuthenticationError';
+import { Cookie } from './models/Cookie';
 
 const mongoURI: string = process.env.MONGO_URI ?? 'mongodb://localhost:27017/quiz_me';
 const authProvider = new AuthProvider<IUser>(mongoURI);
@@ -24,20 +24,26 @@ RouteHandler.authProvider = authProvider;
 Deck.mongoURI = mongoURI;
 Card.mongoURI = mongoURI;
 
+enum CookieKeys {
+    refreshToken = 'jid',
+}
+Cookie.register(new Cookie(CookieKeys.refreshToken, '', { httpOnly: true, path: '/api/refresh-token' }));
+
 const app = express();
 app.use(
-    cors({
-        origin: process.env.CLIENT_URI,
-        credentials: true,
-    })
+    cors(
+        Cookie.enableCORS({
+            clientURI: process.env.CLIENT_URI!,
+        })
+    )
 );
-app.use(cookieParser());
+app.use(Cookie.parser());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 app.use((req, res, next) => {
     req.routeHandler = new RouteHandler(req, res, next);
-    res.header('Access-Control-Allow-Credentials', 'true');
+    Cookie.setHeaders(res);
 
     /* // ! unused headers
     res.header('Access-Control-Allow-Origin', '*');
@@ -75,7 +81,7 @@ app.post('/api/login', async (req: Request, res: Response) => {
         const { user, accessToken, refreshToken } = data;
 
         if (user) {
-            res.cookie('jid', refreshToken, { httpOnly: true, path: '/api/refresh-token' });
+            Cookie.setRegistered(res, CookieKeys.refreshToken, refreshToken);
             req.routeHandler.response.data = {
                 user,
                 accessToken,
@@ -89,20 +95,14 @@ app.post('/api/login', async (req: Request, res: Response) => {
 });
 
 app.get('/api/logout', (req, res) => {
-    req.routeHandler.invalidateCookie('jid', 'undefined');
+    Cookie.invalidate(res, Cookie.getRegistered(CookieKeys.refreshToken)!);
     req.routeHandler.response.send();
 });
 
 app.get('/api/refresh-token', async (req, res) => {
     try {
-        const verify = Token.verify(req.cookies['jid'], TokenTypes.refresh);
+        const verify = Token.verify(req.cookies[CookieKeys.refreshToken], TokenTypes.refresh);
         const user = await authProvider.getUserById(verify.data.userId);
-        if (!user) {
-            throw new AuthenticationError(
-                AuthenticationError.messages.user_not_found,
-                AuthenticationError.codes.not_found
-            );
-        }
         const data: any = {
             accessToken: Token.encrypt({ userId: user.id }, TokenTypes.access),
         };
@@ -111,6 +111,7 @@ app.get('/api/refresh-token', async (req, res) => {
         }
         req.routeHandler.response.data = data;
     } catch (error) {
+        Cookie.invalidate(res, Cookie.getRegistered(CookieKeys.refreshToken)!);
         req.routeHandler.error = error;
     }
     req.routeHandler.response.send();
